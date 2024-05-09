@@ -1,0 +1,298 @@
+---
+title: "final632"
+author: "Surekha Peethambaram MUralidhar"
+date: "2024-04-25"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+football <- read.csv("/cloud/project/past-data.csv", stringsAsFactors=TRUE)
+```
+
+
+```{r}
+# Load the dplyr package
+library(dplyr)
+library(tidyverse)
+
+# Remove rows with any NA values from the dataset
+football_clean <- drop_na(football)
+
+head(football_clean)
+
+# Check the number of rows removed
+initial_rows <- nrow(football)
+cleaned_rows <- nrow(football_clean)
+removed_rows <- initial_rows - cleaned_rows
+removed_rows  # Number of rows removed due to NAs
+
+```
+
+
+
+
+
+
+
+
+```{r}
+
+library(dplyr)
+
+set.seed(123)
+# Sample 200 random rows from the dataset
+random_sample <- sample_n(football_clean, 2000)
+
+# Display the first few rows of the sample
+head(random_sample)
+
+```
+
+
+
+
+
+```{r}
+
+library(ggplot2)
+
+# Create a scatter plot of FTHG vs. HST
+ggplot(data = random_sample, aes(x = HST, y = FTHG)) +
+  geom_point(alpha = 0.6, color = "blue") +  # Scatter plot with points
+  geom_smooth(method = "lm", se = FALSE, color = "red") +  # Linear trend line
+  labs(
+    title = "Scatter Plot of Full Time Home Goals vs. Home Shots on Target",
+    x = "Home Shots on Target (HST)",
+    y = "Full Time Home Goals (FTHG)"
+  ) +
+  theme_minimal()  # Simple theme for better visibility
+
+```
+
+
+```{r}
+library(ggplot2)
+library(hexbin)  # Needed for hexbin support
+
+ggplot(data = random_sample, aes(x = HST, y = FTHG)) +
+  geom_hex() +  # Hexbin plot
+  labs(
+    title = "Hexbin Plot of FTHG vs. HST",
+    x = "Home Shots on Target (HST)",
+    y = "Full Time Home Goals (FTHG)"
+  ) +
+  theme_minimal() +
+  scale_fill_viridis_c()  # Color scale for hexbin intensity
+
+```
+
+
+```{r}
+# Load the ggplot2 package
+library(ggplot2)
+
+
+ggplot(data = random_sample, aes(x = FTHG)) +
+  geom_histogram(binwidth = 1, fill = "blue", color = "black") +  # 1 goal per bin
+  labs(
+    title = "Histogram of Full Time Home Goals (FTHG)",
+    x = "Full Time Home Goals (FTHG)",
+    y = "Count"
+  ) +
+  theme_minimal()
+
+```
+
+
+```{r}
+# Histogram for Home Shots on Target (HST)
+ggplot(data = random_sample, aes(x = HST)) +
+  geom_histogram(binwidth = 1, fill = "orange", color = "black") +  # 1 shot per bin
+  labs(
+    title = "Histogram of Home Shots on Target (HST)",
+    x = "Home Shots on Target (HST)",
+    y = "Count"
+  ) +
+  theme_minimal()
+
+```
+
+
+
+
+
+
+
+```{r}
+# Fit a linear model
+l_model <- lm(FTHG~ HST, data = random_sample)
+summary(l_model)
+```
+
+```{r}
+plot(l_model)
+```
+
+
+
+```{r}
+
+random_sample$FTHG[random_sample$FTHG <= 0] <- 0.1
+random_sample$HST[random_sample$HST <= 0] <- 0.1
+lm_model <- lm(log(FTHG) ~ log(HST), data = random_sample)
+summary(lm_model)
+```
+
+```{r}
+par(mfrow=c(2,2))
+plot(lm_model)
+
+
+```
+
+
+
+
+
+
+
+```{r}
+# Plot residuals
+ggplot(data = as.data.frame(lm_model$residuals), aes(x = lm_model$residuals)) +
+  geom_histogram(binwidth = 1, fill = "blue", color = "black") +
+  labs(
+    title = "Histogram of Residuals",
+    x = "Residuals",
+    y = "Count"
+  )
+
+```
+
+```{r}
+
+min_value <- min(random_sample$FTHG)  # Find the minimum value in the data
+
+# Calculate the constant to make all values positive
+constant <- abs(min_value) + 1  # Ensures that even the minimum value becomes positive
+# Add the constant to the dependent variable
+random_sample$FTHG <- random_sample$FTHG + constant  # New variable with positive values
+
+
+library(car)
+library(MASS)
+
+
+library(MASS)
+
+# Apply the Box-Cox transformation to the new positive variable
+boxcox_transformation <- boxcox(lm(FTHG ~ HST, data = random_sample))
+
+# Get the optimal lambda
+optimal_lambda <- boxcox_transformation$x[which.max(boxcox_transformation$y)]
+
+# Apply the transformation using the optimal lambda
+transformed_y <- (random_sample$FTHG ^ optimal_lambda - 1) / optimal_lambda  # Box-Cox transformation
+
+MOD <- lm(transformed_y~HST, data = random_sample)
+
+```
+
+
+
+```{r}
+shapiro.test(lm_model$residuals)
+```
+
+```{r}
+# Calculate leverage and standardized residuals
+hat_values <- hatvalues(lm_model)
+std_residuals <- rstandard(lm_model)
+
+
+p <- 2  # Number of predictors (including the intercept)
+n <- nrow(random_sample)  # Total number of observations
+
+# Create the leverage plot with standardized residuals
+plot(
+  hat_values,
+  std_residuals,
+  xlab = "Leverage",
+  ylab = "Standardized Residuals",
+  main = "Leverage vs. Standardized Residuals"
+)
+
+high_leverage_threshold <- 2 * (p + 1) / n  # Common threshold for high leverage
+abline(v = high_leverage_threshold, lty = 2, col = "red")  # Dashed red line
+
+outlier_threshold <- 2  # or another chosen value
+abline(h = outlier_threshold, lty = 2, col = "blue")  # Upper threshold
+abline(h = -outlier_threshold, lty = 2, col = "blue")  # Lower threshold
+
+
+
+```
+
+```{r}
+par(mfrow= c(2,2))
+plot(lm_model)
+```
+
+
+
+```{r}
+
+library(dplyr)
+library(knitr)
+
+
+# Build a logistic regression model with selected predictors
+lmm_model <- lm(FTHG ~ AC+AR+AY+AST+HST+AS+HS+HTAG+FTAG + HC + HTHG + HF + HY + HR, 
+                      data = random_sample 
+                      )
+```
+
+
+
+
+```{r}
+
+kable(AIC(lmm_model,lmmr_model))
+
+```
+
+
+```{r}
+library(car)
+kable(vif(lmm_model) )
+```
+
+
+
+
+```{r}
+library(randomForest)
+
+# Random Forests model with relevant predictors
+random_forest_model <- randomForest(FTHG ~ AR+AST+HST + HC + HTHG + HR, 
+                      data = random_sample, ntree = 500)
+
+# Summary of the Random Forests model
+print(random_forest_model)
+
+```
+
+```{r}
+# Cross-validation with Random Forests
+library(caret)
+train_control <- trainControl(method = "cv", number = 10)  # 10-fold cross-validation
+rf_cv_model <- train(FTHG ~ AR+AST+HST + HC + HTHG + HR, 
+                      data = random_sample, method = "rf", trControl = train_control)
+print(rf_cv_model)
+```
+
